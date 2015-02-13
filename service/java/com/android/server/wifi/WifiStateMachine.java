@@ -422,6 +422,9 @@ public class WifiStateMachine extends StateMachine {
     /* Tracks current frequency mode */
     private AtomicInteger mFrequencyBand = new AtomicInteger(WifiManager.WIFI_FREQUENCY_BAND_AUTO);
 
+    /* Tracks current country code */
+    private String mCountryCode = "GB";
+
     /* Tracks if we are filtering Multicast v4 packets. Default is to filter. */
     private AtomicBoolean mFilteringMulticastV4Packets = new AtomicBoolean(true);
 
@@ -2451,6 +2454,13 @@ public class WifiStateMachine extends StateMachine {
         int result = resultMsg.arg1;
         resultMsg.recycle();
         return result;
+    }
+
+    /**
+     * Returns the operational country code
+     */
+    public String getCountryCode() {
+        return mCountryCode;
     }
 
     /**
@@ -5661,7 +5671,8 @@ public class WifiStateMachine extends StateMachine {
                     if (mLastSetCountryCode == null
                             || country.equals(mLastSetCountryCode) == false) {
                         if (mWifiNative.setCountryCode(country)) {
-                            mLastSetCountryCode = country;
+                            log("WIFI_COUNTRY_CODE set to " + country);
+                            mLastSetCountryCode = mCountryCode = country;
                         } else {
                             loge("Failed to set country code " + country);
                         }
@@ -7261,10 +7272,11 @@ public class WifiStateMachine extends StateMachine {
                     mWifiConfigStore.
                                 setLastSelectedConfiguration(WifiConfiguration.INVALID_NETWORK_ID);
                     break;
-                case CMD_SET_COUNTRY_CODE:
+                // allow changing also in connected state
+                /*case CMD_SET_COUNTRY_CODE:
                     messageHandlingStatus = MESSAGE_HANDLING_STATUS_DEFERRED;
                     deferMessage(message);
-                    break;
+                    break;*/
                 case CMD_START_SCAN:
                     if (!checkOrDeferScanAllowed(message)) {
                         // Ignore the scan request
