@@ -542,8 +542,8 @@ public class WifiMonitor {
         mStateMachine2 = stateMachine;
     }
 
-    public void startMonitoring() {
-        WifiMonitorSingleton.sInstance.startMonitoring(mInterfaceName);
+    public boolean startMonitoring() {
+        return WifiMonitorSingleton.sInstance.startMonitoring(mInterfaceName);
     }
 
     public void stopMonitoring() {
@@ -568,11 +568,11 @@ public class WifiMonitor {
         private WifiMonitorSingleton() {
         }
 
-        public synchronized void startMonitoring(String iface) {
+        public synchronized boolean startMonitoring(String iface) {
             WifiMonitor m = mIfaceMap.get(iface);
             if (m == null) {
                 Log.e(TAG, "startMonitor called with unknown iface=" + iface);
-                return;
+                return false;
             }
 
             Log.d(TAG, "startMonitoring(" + iface + ") with mConnected = " + mConnected);
@@ -580,7 +580,12 @@ public class WifiMonitor {
             if (mConnected) {
                 m.mMonitoring = true;
                 m.mStateMachine.sendMessage(SUP_CONNECTION_EVENT);
+                return true;
             } else {
+                if (iface.equals("p2p0")) {
+                    Log.e(TAG, "Monitoring(" + iface +") failed!, wlan0 interface restarted");
+                    return false;
+                }
                 if (DBG) Log.d(TAG, "connecting to supplicant");
                 int connectTries = 0;
                 while (true) {
@@ -589,7 +594,7 @@ public class WifiMonitor {
                         m.mStateMachine.sendMessage(SUP_CONNECTION_EVENT);
                         mConnected = true;
                         new MonitorThread(mWifiNative, this).start();
-                        break;
+                        return true;
                     }
                     if (connectTries++ < 50) {
                         try {
@@ -603,6 +608,8 @@ public class WifiMonitor {
                     }
                 }
             }
+            return false;
+
         }
 
         public synchronized void stopMonitoring(String iface) {
