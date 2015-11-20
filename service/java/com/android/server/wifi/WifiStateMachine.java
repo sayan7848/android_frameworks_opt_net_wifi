@@ -555,6 +555,9 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
     /* Tracks current frequency mode */
     private AtomicInteger mFrequencyBand = new AtomicInteger(WifiManager.WIFI_FREQUENCY_BAND_AUTO);
 
+    /* Tracks current country code */
+    private String mCountryCode = "GB";
+
     /* Tracks if we are filtering Multicast v4 packets. Default is to filter. */
     private AtomicBoolean mFilteringMulticastV4Packets = new AtomicBoolean(true);
 
@@ -2505,6 +2508,12 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
         sendMessage(CMD_SET_FREQUENCY_BAND, band, 0);
     }
 
+    /**
+     * Returns the operational country code
+     */
+    public String getCountryCode() {
+        return mCountryCode;
+    }
     /**
      * Enable TDLS for a specific MAC address
      */
@@ -6106,7 +6115,8 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
 
                     if (!TextUtils.equals(mDriverSetCountryCode, country)) {
                         if (mWifiNative.setCountryCode(country)) {
-                            mDriverSetCountryCode = country;
+                            log("WIFI_COUNTRY_CODE set to " + country);
+                            mDriverSetCountryCode = mCountryCode = country;
                         } else {
                             loge("Failed to set country code " + country);
                         }
@@ -8322,10 +8332,11 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
                     mWifiConfigStore.
                                 setLastSelectedConfiguration(WifiConfiguration.INVALID_NETWORK_ID);
                     break;
-                case CMD_SET_COUNTRY_CODE:
+                // allow changing also in connected state
+                /*case CMD_SET_COUNTRY_CODE:
                     messageHandlingStatus = MESSAGE_HANDLING_STATUS_DEFERRED;
                     deferMessage(message);
-                    break;
+                    break;*/
                 case CMD_START_SCAN:
                     if (DBG) {
                         logd("CMD_START_SCAN source " + message.arg1
