@@ -746,9 +746,6 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
     /* alert from firmware */
     static final int CMD_FIRMWARE_ALERT                                 = BASE + 100;
 
-    /* SIM is removed; reset any cached data for it */
-    static final int CMD_RESET_SIM_NETWORKS                             = BASE + 101;
-
     /**
      * Make this timer 40 seconds, which is about the normal DHCP timeout.
      * In no valid case, the WiFiStateMachine should remain stuck in ObtainingIpAddress
@@ -1125,7 +1122,7 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
         mP2pSupported = mContext.getPackageManager().hasSystemFeature(
                 PackageManager.FEATURE_WIFI_DIRECT);
 
-        mWifiNative = new WifiNative(mInterfaceName, mContext);
+        mWifiNative = new WifiNative(mInterfaceName);
         mWifiConfigStore = new WifiConfigStore(context,this,  mWifiNative);
         mWifiAutoJoinController = new WifiAutoJoinController(context, this,
                 mWifiConfigStore, mWifiConnectionStatistics, mWifiNative);
@@ -2363,7 +2360,9 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
         if (enable) {
             mWifiConfigStore.enableAllNetworks();
         }
-        boolean ret = mWifiNative.enableBackgroundScan(enable);
+        List<WifiNative.PnoNetworkPriority> pnoList =
+                mWifiConfigStore.retrievePnoNetworkPriorityList(enable);
+        boolean ret = mWifiNative.enableBackgroundScan(enable, pnoList);
         if (ret) {
             mLegacyPnoEnabled = enable;
         } else {
@@ -2476,14 +2475,6 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
             setCountryCode(mDefaultCountryCode, /* persist = */ true);
         }
     }
-
-    /**
-     * reset cached SIM credential data
-     */
-    public synchronized void resetSimAuthNetworks() {
-        sendMessage(CMD_RESET_SIM_NETWORKS);
-    }
-
 
     /**
      * Get Network object of current wifi network
@@ -6116,10 +6107,6 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
 
                     mWifiP2pChannel.sendMessage(WifiP2pServiceImpl.SET_COUNTRY_CODE, country);
                     break;
-                case CMD_RESET_SIM_NETWORKS:
-                    log("resetting EAP-SIM/AKA/AKA' networks since SIM was removed");
-                    mWifiConfigStore.resetSimNetworks();
-                    break;
                 default:
                     return NOT_HANDLED;
             }
@@ -8595,17 +8582,6 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
                 case CMD_STOP_RSSI_MONITORING_OFFLOAD:
                     stopRssiMonitoringOffload();
                     break;
-                case CMD_RESET_SIM_NETWORKS:
-                    if (mLastNetworkId != WifiConfiguration.INVALID_NETWORK_ID) {
-                        WifiConfiguration config =
-                                mWifiConfigStore.getWifiConfiguration(mLastNetworkId);
-                        if (mWifiConfigStore.isSimConfig(config)) {
-                            mWifiNative.disconnect();
-                            transitionTo(mDisconnectingState);
-                        }
-                    }
-                    /* allow parent state to reset data for other networks */
-                    return NOT_HANDLED;
                 default:
                     return NOT_HANDLED;
             }
@@ -10192,19 +10168,16 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
                     String kc = makeHex(result, 1+kc_offset, kc_len);
                     sb.append(":" + kc + ":" + sres);
                     logv("kc:" + kc + " sres:" + sres);
-
-                    String response = sb.toString();
-                    logv("Supplicant Response -" + response);
-                    mWifiNative.simAuthResponse(requestData.networkId, "GSM-AUTH", response);
                 } else {
                     loge("bad response - " + tmResponse);
-                    mWifiNative.simAuthFailedResponse(requestData.networkId);
                 }
             }
 
+            String response = sb.toString();
+            logv("Supplicant Response -" + response);
+            mWifiNative.simAuthResponse(requestData.networkId, "GSM-AUTH", response);
         } else {
             loge("could not get telephony manager");
-            mWifiNative.simAuthFailedResponse(requestData.networkId);
         }
     }
 
@@ -10248,7 +10221,6 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
             }
         }
 
-        boolean good_response = false;
         if (tmResponse != null && tmResponse.length() > 4) {
             byte[] result = android.util.Base64.decode(tmResponse,
                     android.util.Base64.DEFAULT);
@@ -10264,7 +10236,6 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
                 String ik = makeHex(result, res_len + ck_len + 4, ik_len);
                 sb.append(":" + ik + ":" + ck + ":" + res);
                 logv("ik:" + ik + "ck:" + ck + " res:" + res);
-                good_response = true;
             } else if (tag == (byte) 0xdc) {
                 loge("synchronisation failure");
                 int auts_len = result[1];
@@ -10272,21 +10243,18 @@ public class WifiStateMachine extends StateMachine implements WifiNative.WifiPno
                 res_type = "UMTS-AUTS";
                 sb.append(":" + auts);
                 logv("auts:" + auts);
-                good_response = true;
             } else {
                 loge("bad response - unknown tag = " + tag);
+                return;
             }
         } else {
             loge("bad response - " + tmResponse);
+            return;
         }
 
-        if (good_response) {
-            String response = sb.toString();
-            if (VDBG) logv("Supplicant Response -" + response);
-            mWifiNative.simAuthResponse(requestData.networkId, res_type, response);
-        } else {
-            mWifiNative.umtsAuthFailedResponse(requestData.networkId);
-        }
+        String response = sb.toString();
+        logv("Supplicant Response -" + response);
+        mWifiNative.simAuthResponse(requestData.networkId, res_type, response);
     }
 
     /**
