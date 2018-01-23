@@ -171,7 +171,7 @@ int wifi_load_driver() {
     return 0;
   }
 
-  int count = 20; /* wait at most 10 seconds for completion */
+  int count = 5; /* wait at most 10 seconds for completion */
   while (count-- > 0) {
     if (is_wifi_driver_loaded()) break;
     usleep(1000000);
